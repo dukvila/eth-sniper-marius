@@ -1,77 +1,77 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import numpy as np
+import urllib.request, json, statistics, math
 from datetime import datetime, timedelta
 
-# 1. Konfigūracija
-st.set_page_config(page_title="ETH SNIPER V18 FUTURE", layout="wide")
-st.title("🚀 ETH SNIPER V18 | 24H FUTURE RADAR")
+# 1. Puslapio nustatymai
+st.set_page_config(page_title="ETH SNIPER V18", layout="wide")
+st.title("🎯 ETH SNIPER V18 | PRO RADAR")
 
-def get_live_data():
+# Tavo CryptoPanic raktas
+CP_API_KEY = "cb3edbdd0bef024331f39e3d16bbafd8cf61208f"
+
+def get_market_data():
+    sentiment = 1.0
     try:
-        url = "https://min-api.cryptocompare.com/data/v2/histohour?fsym=ETH&tsym=EUR&limit=48"
-        df_raw = pd.read_json(url)
-        data = pd.DataFrame(df_raw['Data']['Data'])
-        df = data[['time', 'close']].copy()
-        df['time'] = pd.to_datetime(df['time'], unit='s')
-        return df
-    except:
-        return pd.DataFrame()
-
-if st.button('SKAIČIUOTI ATEITIES PROGNOZĘ (24H)'):
-    df = get_live_data()
+        url_n = f"https://cryptopanic.com/api/v1/posts/?auth_token={CP_API_KEY}&currencies=ETH&filter=hot"
+        with urllib.request.urlopen(url_n, timeout=5) as r:
+            posts = json.loads(r.read().decode()).get('results', [])
+            pos = sum((p.get('votes', {}).get('positive', 0) + p.get('votes', {}).get('bullish', 0)) for p in posts[:12])
+            neg = sum((p.get('votes', {}).get('negative', 0) + p.get('votes', {}).get('bearish', 0)) for p in posts[:12])
+            sentiment = 1.0 + (pos - neg) / 180
+    except: pass
     
-    if not df.empty:
-        # --- V18 ATEITIES ALGORITMAS ---
-        current_price = df['close'].iloc[-1]
-        last_time = df['time'].iloc[-1]
-        
-        # Sukuriame ateities laiko ašį (24 valandos)
-        future_times = [last_time + timedelta(hours=i) for i in range(1, 25)]
-        
-        # Simuliuojame V18 judėjimą (trendas + svyravimai)
-        np.random.seed(42)
-        trend = np.linspace(0, -20, 24) # Pavyzdinis nuolydis
-        noise = np.sin(np.linspace(0, 10, 24)) * 15
-        future_prices = current_price + trend + noise
-        
-        # Grafiko braižymas
+    try:
+        # Naudojame stabilų Binance API adresą
+        url_b = "https://api1.binance.com/api/v3/klines?symbol=ETHEUR&interval=1h&limit=100"
+        with urllib.request.urlopen(url_b, timeout=5) as r:
+            d = json.loads(r.read().decode())
+            return [datetime.fromtimestamp(z[0]/1000) for z in d], [float(z[4]) for z in d], sentiment
+    except: return [], [], 1.0
+
+# Vieno mygtuko paspaudimas telefone
+if st.button('PALEISTI RADARĄ'):
+    laikai, kainos, sentiment = get_market_data()
+    
+    if kainos:
+        # Tavo V18 matematika
+        dabartine = kainos[-1]
+        nuokrypis = statistics.stdev(kainos[-48:])
+        trendas = (kainos[-1] - kainos[-18]) / 18 
+
+        l_at = [datetime.now() + timedelta(hours=h) for h in range(25)]
+        p_at = []
+        for h in range(25):
+            val = dabartine + (trendas * h) + ((math.sin(h/3.8)*(nuokrypis*0.8) + math.sin(h/1.2)*(nuokrypis*0.3)) * sentiment)
+            p_at.append(val)
+
+        # Braižymas
         fig, ax = plt.subplots(figsize=(12, 6))
-        
-        # 1. Praeities linija
-        ax.plot(df['time'], df['close'], color='#005A5A', linewidth=2, alpha=0.5, label='Istorija')
-        
-        # 2. ATEITIES PROGNOZĖS linija
-        ax.plot(future_times, future_prices, color='#005A5A', linewidth=3, label='24H Prognozė')
-        
-        # 3. V18 PROGNOZĖS TAŠKAI (kaip tavo nuotraukose)
-        future_indices = [5, 11, 17, 23] # Taškai po 6, 12, 18 ir 24 valandų
-        for i in future_indices:
-            p = future_prices[i]
-            t = future_times[i]
-            procentas = 80 + np.random.uniform(1, 9)
-            
-            # Spalvotas taškas (raudonas/oranžinis)
-            color = 'red' if i > 12 else 'orange'
-            ax.scatter(t, p, color=color, s=100, edgecolors='black', zorder=5)
-            
-            # Etiketė su ateities laiku ir kaina
-            laikas_str = t.strftime('%H:%M')
-            ax.text(t, p + 5, f"{laikas_str}\n{p:.1f}€\n{procentas:.1f}%", 
-                    fontsize=9, fontweight='bold', ha='center')
+        ax.plot(l_at, p_at, color="#005A5A", linewidth=3, label="ETH PROGNOZĖ")
+        ax.margins(y=0.2)
 
-        # Estetika (kaip image_6f3b9b.jpg)
-        ax.set_facecolor('white')
-        ax.grid(True, linestyle='--', alpha=0.3)
-        ax.axvline(x=last_time, color='black', linestyle='-', alpha=0.2) # Dabarties linija
-        
-        st.info(f"📊 Būsena: Nuotaika 1.00 | Atnaujinta: {datetime.now().strftime('%H:%M:%S')}")
+        # Taškų žymėjimas
+        for t in range(1, 24):
+            is_max = p_at[t] > p_at[t-1] and p_at[t] > p_at[t+1]
+            is_min = p_at[t] < p_at[t-1] and p_at[t] < p_at[t+1]
+            if is_max or is_min:
+                prob = min(98.8, max(55.0, (84 + (sentiment-1)*55) + math.cos(t)*4))
+                color = "#D32F2F" if is_max else "#F57C00"
+                ax.scatter(l_at[t], p_at[t], color=color, s=100, edgecolors='black', zorder=5)
+                
+                # Tekstas virš taško
+                y_offset = 10 if is_max else -25
+                ax.text(l_at[t], p_at[t] + y_offset, f"{p_at[t]:.0f}€\n{prob:.1f}%", 
+                        ha='center', fontsize=9, fontweight='bold')
+
+        # Informacija
+        st.info(f"📊 Nuotaika: {sentiment:.2f} | Atnaujinta: {datetime.now().strftime('%H:%M:%S')}")
+        ax.grid(True, alpha=0.2)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
         st.pyplot(fig)
-        
-        st.metric("Dabartinė kaina", f"{current_price:.2f} €")
-        st.write("Viskas, kas dešinėje nuo pilkos linijos – ateities 24 valandų prognozė.")
+        st.metric("Dabartinė kaina", f"{dabartine:.2f} €")
     else:
-        st.error("Nepavyko gauti duomenų.")
-
-st.write("Sistemos versija: V18.5 FUTURE | Skaičiuojama 24 valandų ateitis")
+        st.error("Nepavyko gauti duomenų. Bandykite dar kartą.")
