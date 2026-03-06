@@ -31,7 +31,6 @@ st.write("Skaičiuojama 1734€ prognozė...")
 placeholder = st.empty()
 
 # Automatinis atnaujinimas
-while True:
     laikai, kainos, sentiment = get_data()
     if kainos:
         with placeholder.container():
@@ -63,6 +62,3 @@ while True:
             c1.metric("Dabartinė Kaina", f"{dabartine:.2f} €")
             c2.metric("Trendas (1h)", f"{trendas:.2f} €")
             c3.metric("Nuotaika (Sentiment)", f"{sentiment:.2f}")
-
-    import time
-    time.sleep(30)
