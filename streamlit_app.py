@@ -1,41 +1,43 @@
 import streamlit as st
-import urllib.request, json, statistics, math
-from datetime import datetime, timedelta
+import pandas as pd
 import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
 
-# --- KONFIGŪRACIJA ---
-st.set_page_config(page_title="ETH SNIPER CLOUD", layout="wide")
-CP_API_KEY = "cb3edbdd0bef024331f39e3d16bbafd8cf61208f"
+st.set_page_config(page_title="ETH SNIPER", layout="wide")
 
-def get_data():
-    try:
-        url_b = "https://api.binance.com/api/v3/klines?symbol=ETHEUR&interval=1h&limit=100"
-        with urllib.request.urlopen(url_b, timeout=5) as r:
-            d = json.loads(r.read().decode())
-            return [datetime.fromtimestamp(z[0]/1000) for z in d], [float(z[4]) for z in d]
-    except: return [], []
-
-# --- PAGRINDINIS PUSLAPIS ---
 st.title("🚀 ETH SNIPER - MOBILE RADAR")
-laikai, kainos = get_data()
 
-if kainos:
-    dabartine = kainos[-1]
-    nuokrypis = statistics.stdev(kainos[-48:])
-    trendas = (kainos[-1] - kainos[-18]) / 18 
+# Naudojame paprastesnį duomenų gavimo būdą per Pandas
+@st.cache_data(ttl=60)
+def get_eth_data():
+    try:
+        url = "https://api.binance.com/api/v3/klines?symbol=ETHEUR&interval=1h&limit=24"
+        df = pd.read_json(url)
+        df = df.iloc[:, [0, 4]]
+        df.columns = ['laikas', 'kaina']
+        df['laikas'] = pd.to_datetime(df['laikas'], unit='ms')
+        df['kaina'] = df['kaina'].astype(float)
+        return df
+    except:
+        return pd.DataFrame()
 
-    fig, ax = plt.subplots(figsize=(10, 5))
-    l_at = [datetime.now() + timedelta(hours=h) for h in range(25)]
-    p_at = [dabartine + (trendas * h) + (math.sin(h/3.8)*nuokrypis) for h in range(25)]
+if st.button('ATNAUJINTI RADARĄ'):
+    data = get_eth_data()
+    if not data.empty:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.plot(data['laikas'], data['kaina'], color='#00ffcc', linewidth=2, label='ETH/EUR')
+        ax.set_facecolor('#1e1e1e')
+        fig.patch.set_facecolor('#1e1e1e')
+        ax.tick_params(colors='white')
+        
+        # Prognozės taškas 1734€
+        prognoze = 1734.0
+        ax.axhline(y=prognoze, color='red', linestyle='--', label='Target 1734€')
+        ax.legend()
+        
+        st.pyplot(fig)
+        st.metric("Dabartinė kaina", f"{data['kaina'].iloc[-1]:.2f} €")
+    else:
+        st.error("Nepavyko gauti duomenų iš biržos. Bandykite dar kartą.")
 
-    ax.plot(l_at, p_at, color="#005A5A", linewidth=2)
-    for t in [6, 12, 18, 24]:
-        ax.scatter(l_at[t], p_at[t], color="red")
-        ax.text(l_at[t], p_at[t], f"{p_at[t]:.0f}€", fontsize=10, weight='bold')
-
-    st.pyplot(fig)
-    st.metric("Dabartinė ETH Kaina", f"{dabartine:.2f} €", f"{trendas:.2f} €")
-    st.write("Prognozė 24 valandoms pagal 1734€ modelį.")
-    
-if st.button('ATNAUJINTI DUOMENIS'):
-    st.rerun()
+st.write("Prognozės modelis: v1.0 [1734€ Target]")
