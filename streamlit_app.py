@@ -3,35 +3,36 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime
 
-# 1. Pagrindiniai puslapio nustatymai
+# 1. Puslapio nustatymai telefonui
 st.set_page_config(page_title="ETH SNIPER", layout="wide")
 st.title("🚀 ETH SNIPER - MOBILE RADAR")
 
-# 2. Funkcija duomenims gauti
+# 2. Funkcija duomenims gauti iš stabilesnio šaltinio
 def get_eth_data():
     try:
-        # Naudojame alternatyvų Binance API adresą (api1), kad išvengtume blokavimo
-        url = "https://api1.binance.com/api/v3/klines?symbol=ETHEUR&interval=1h&limit=24"
-        df = pd.read_json(url)
-        df = df.iloc[:, [0, 4]]
+        # Naudojame CryptoCompare - jie rečiau blokuoja debesies serverius
+        url = "https://min-api.cryptocompare.com/data/v2/histohour?fsym=ETH&tsym=EUR&limit=24"
+        df_raw = pd.read_json(url)
+        data_list = df_raw['Data']['Data']
+        df = pd.DataFrame(data_list)
+        
+        df['time'] = pd.to_datetime(df['time'], unit='s')
+        df = df[['time', 'close']]
         df.columns = ['laikas', 'kaina']
-        df['laikas'] = pd.to_datetime(df['laikas'], unit='ms')
-        df['kaina'] = df['kaina'].astype(float)
         return df
     except Exception as e:
-        # Jei įvyksta klaida, grąžiname tuščią lentelę
         return pd.DataFrame()
 
-# 3. Mygtukas ir grafiko braižymas
+# 3. Mygtukas ir grafikas
 if st.button('ATNAUJINTI RADARĄ'):
     data = get_eth_data()
     
     if not data.empty:
-        # Sukuriame tamsaus stiliaus grafiką
+        # Braižome profesionalų tamsų grafiką
         fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot(data['laikas'], data['kaina'], color='#00ffcc', linewidth=2, label='ETH/EUR')
+        ax.plot(data['laikas'], data['kaina'], color='#00ffcc', linewidth=3, label='ETH/EUR')
         
-        # Estetika pritaikyta telefonui
+        # Estetika pritaikyta tamsiam režimui
         ax.set_facecolor('#1e1e1e')
         fig.patch.set_facecolor('#1e1e1e')
         ax.tick_params(colors='white')
@@ -39,14 +40,13 @@ if st.button('ATNAUJINTI RADARĄ'):
         
         # Prognozės linija ties 1734€
         prognoze = 1734.0
-        ax.axhline(y=prognoze, color='red', linestyle='--', label='Target 1734€')
+        ax.axhline(y=prognoze, color='#ff4b4b', linestyle='--', linewidth=2, label='Target 1734€')
         ax.legend()
         
-        # Rodome grafiką ir kainą
         st.pyplot(fig)
-        st.metric("Dabartinė kaina", f"{data['kaina'].iloc[-1]:.2f} €")
+        st.metric("Dabartinė ETH kaina", f"{data['kaina'].iloc[-1]:.2f} €")
+        st.success("Radaras atnaujintas!")
     else:
-        # Pranešimas, jei Binance neatsako
-        st.error("Nepavyko gauti duomenų. Palaukite 10 sekundžių ir spauskite dar kartą.")
+        st.error("Nepavyko prisijungti prie biržos. Bandykite dar kartą.")
 
-st.write("Prognozės modelis: v1.2 [1734€ Target]")
+st.write("Prognozės modelis: v1.3 [1734€ Target]")
