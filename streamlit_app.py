@@ -7,12 +7,12 @@ import urllib.request, json, statistics, math
 from datetime import datetime, timedelta
 
 # Konfigūracija
-st.set_page_config(page_title="ETH SNIPER V18", layout="wide")
-st.title("🎯 ETH SNIPER V18 | PRO RADAR")
+st.set_page_config(page_title="ETH SNIPER V18 | KRAKEN", layout="wide")
+st.title("🎯 ETH SNIPER V18 | KRAKEN RADAR")
 
 def get_market_data():
     sentiment = 1.0
-    # 1. Nuotaikos
+    # 1. Nuotaikos (CryptoPanic)
     try:
         cp_url = "https://cryptopanic.com/api/v1/posts/?auth_token=cb3edbdd0bef024331f39e3d16bbafd8cf61208f&currencies=ETH&filter=hot"
         with urllib.request.urlopen(cp_url, timeout=10) as r:
@@ -24,19 +24,25 @@ def get_market_data():
     except:
         sentiment = 1.0
     
-    # 2. Kainos (Su apsauga nuo blokavimo)
+    # 2. Kainos iš KRAKEN (Vietoj Binance)
     try:
-        b_url = "https://api1.binance.com/api/v3/klines?symbol=ETHEUR&interval=1h&limit=100"
-        # Pridedame headers, kad Binance matytų mus kaip naršyklę, o ne botą
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        req = urllib.request.Request(b_url, headers=headers)
+        # Kraken API naudoja XETHZEUR porą
+        k_url = "https://api.kraken.com/0/public/OHLC?pair=ETHEUR&interval=60"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        req = urllib.request.Request(k_url, headers=headers)
         with urllib.request.urlopen(req, timeout=10) as r:
-            d = json.loads(r.read().decode())
-            return [datetime.fromtimestamp(z[0]/1000) for z in d], [float(z[4]) for z in d], sentiment
+            res = json.loads(r.read().decode())
+            # Kraken duomenų struktūra: [time, open, high, low, close, vwap, volume, count]
+            d = res['result']['XETHZEUR']
+            # Paimame paskutinius 100 įrašų
+            d = d[-100:]
+            laikai = [datetime.fromtimestamp(z[0]) for z in d]
+            kainos = [float(z[4]) for z in d]
+            return laikai, kainos, sentiment
     except Exception as e:
         return [], [], 1.0
 
-if st.button('PALEISTI RADARĄ'):
+if st.button('PALEISTI RADARĄ (KRAKEN)'):
     laikai, kainos, sentiment = get_market_data()
     
     if kainos:
@@ -51,11 +57,11 @@ if st.button('PALEISTI RADARĄ'):
             val = dabartine + (trendas * h) + ((math.sin(h/3.8)*(nuokrypis*0.8) + math.sin(h/1.2)*(nuokrypis*0.3)) * sentiment)
             p_at.append(val)
 
-        # Braižymas
+        # Braižymas (V18 stilius)
         fig, ax = plt.subplots(figsize=(12, 6), facecolor='white')
-        ax.plot(l_at, p_at, color="#005A5A", linewidth=3, label="PROGNOZĖ")
+        ax.plot(l_at, p_at, color="#005A5A", linewidth=3, label="V18 PROGNOZĖ")
         
-        # Pikų žymėjimas
+        # Žymėjimas
         for t in range(1, 24):
             is_max = p_at[t] > p_at[t-1] and p_at[t] > p_at[t+1]
             is_min = p_at[t] < p_at[t-1] and p_at[t] < p_at[t+1]
@@ -66,8 +72,8 @@ if st.button('PALEISTI RADARĄ'):
 
         ax.grid(True, alpha=0.1)
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-        st.info(f"📊 Būsena: Nuotaika {sentiment:.2f} | Atnaujinta: {datetime.now().strftime('%H:%M:%S')}")
+        st.info(f"📊 Šaltinis: KRAKEN | Nuotaika {sentiment:.2f}")
         st.pyplot(fig)
-        st.metric("Dabartinė ETH kaina", f"{dabartine:.2f} €")
+        st.metric("Dabartinė ETH kaina (Kraken)", f"{dabartine:.2f} €")
     else:
-        st.error("Nepavyko gauti duomenų iš biržos. Bandykite dar kartą po 10 sek. (Birža jus laikinai blokuoja)")
+        st.error("Klaida: Net ir Kraken neatsako. Patikrinkite savo API raktus arba interneto ryšį.")
