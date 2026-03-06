@@ -9,7 +9,9 @@ from datetime import datetime, timedelta
 # Konfigūracija
 st.set_page_config(page_title="ETH SNIPER V18 | KRAKEN", layout="wide")
 st.title("🎯 ETH SNIPER V18 | KRAKEN RADAR")
-
+from streamlit_autorefresh import st_autorefresh
+# Atnaujina kas 5 minutes (300 000 milisekundžių)
+st_autorefresh(interval=300000, key="datarefresh")
 def get_market_data():
     sentiment = 1.0
     # 1. Nuotaikos (CryptoPanic)
