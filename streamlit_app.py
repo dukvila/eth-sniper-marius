@@ -10,8 +10,7 @@ st.title("🚀 ETH SNIPER - MOBILE RADAR")
 # Naudojame paprastesnį duomenų gavimo būdą per Pandas
 @st.cache_data(ttl=60)
 def get_eth_data():
-    try:
-        url = "https://api.binance.com/api/v3/klines?symbol=ETHEUR&interval=1h&limit=24"
+    try:url = "https://api1.binance.com/api/v3/klines?symbol=ETHEUR&interval=1h&limit=24"
         df = pd.read_json(url)
         df = df.iloc[:, [0, 4]]
         df.columns = ['laikas', 'kaina']
