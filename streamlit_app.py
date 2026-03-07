@@ -81,4 +81,20 @@ if kainos and len(kainos) > 50:
             if is_peak or is_bottom:
                 t_color = 'white' if is_peak else '#ff4b4b'
                 ax.text(l_fut[i], p_fut[i] + (1.5 if is_peak else -2.5), 
-                        f"{p_fut[i]:.1f}€", color=t_color, fontweight='bold', ha='center', fontsize=
+                        f"{p_fut[i]:.1f}€", color=t_color, fontweight='bold', ha='center', fontsize=11)
+
+    # ŽALIAS TIKSLO APSKRITIMAS (Prognozės gale)
+    ax.scatter(l_fut[-1], p_fut[-1], color='#00ff00', s=450, zorder=60, edgecolors='white', linewidth=2)
+    ax.text(l_fut[-1], p_fut[-1] + 3.0, f"TIKSLAS: {p_fut[-1]:.1f}", color='#00ff00', fontweight='bold', ha='center', fontsize=12)
+
+    # Geltonas ramybės taškas (Jei ER žemas)
+    if er < 0.35:
+        ax.scatter(laikai[-1], kainos[-1], color='#ffeb3b', s=350, zorder=55)
+
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+    ax.grid(True, alpha=0.1, color='white', linestyle='--')
+    plt.xticks(color='gray', fontsize=12)
+    plt.yticks(color='gray', fontsize=12)
+    st.pyplot(fig)
+else:
+    st.warning("🔄 Jungiamasi prie Quantum Sniper analizės...")
