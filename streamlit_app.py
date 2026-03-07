@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 
 # 1. Konfigūracija
-st.set_page_config(page_title="ETH V48 HARVARD SHARP", layout="wide")
+st.set_page_config(page_title="ETH V49 HARVARD CALIBRATED", layout="wide")
 st_autorefresh(interval=60000, key="datarefresh")
 
 def get_market_data():
@@ -19,79 +19,73 @@ def get_market_data():
             res = json.loads(r.read().decode())
             if 'result' in res:
                 d = res['result']['XETHZEUR'][-160:]
-                # Lietuvos laikas (+2h) sinchronizuotas su tavo kompiuteriu
                 laikai = [datetime.fromtimestamp(z[0]) + timedelta(hours=2) for z in d]
                 kainos = [float(z[4]) for z in d]
                 return laikai, kainos
             return [], []
-    except Exception:
-        return [], []
+    except Exception: return [], []
 
 laikai, kainos = get_market_data()
 
 if kainos and len(kainos) > 40:
     dabartine = kainos[-1]
     
-    # --- HARVARD ANALYTICS & CRITICAL DATA ---
-    pokytis_24h = ((kainos[-1] - kainos[0]) / kainos[0]) * 100
+    # --- HARVARD ANALYTICS ---
     momentum = (kainos[-1] - kainos[-12]) / 3.0
     volatilumas = statistics.stdev(kainos[-40:])
     
-    # Kaufman Efficiency Ratio (Rinkos triukšmo filtras)
+    # Kaufman Efficiency Ratio (Rinkos stabilumo matas)
     direction = abs(kainos[-1] - kainos[-10])
-    vol = sum(abs(kainos[i] - kainos[i-1]) for i in range(len(kainos)-10, len(kainos)))
-    efficiency = direction / vol if vol != 0 else 0
+    vol_sum = sum(abs(kainos[i] - kainos[i-1]) for i in range(len(kainos)-10, len(kainos)))
+    efficiency = direction / vol_sum if vol_sum != 0 else 0
 
-    # Viršutinė juosta (Crypto Critical)
+    # Crypto Critical Info
     c1, c2, c3 = st.columns(3)
-    with c1: st.metric("KAINA", f"{dabartine:.2f} €", f"{pokytis_24h:.2f}%")
+    with c1: st.metric("DABARTINĖ KAINA", f"{dabartine:.2f} €")
     with c2: st.metric("RINKA", "STABILU" if efficiency > 0.6 else "CHAOSAS")
     with c3: st.metric("MOMENTUMAS", f"{momentum:.2f} €/h")
 
-    # --- TIKSLI PROGNOZĖ ---
+    # --- PROGNOZĖ (Kalibruotas Zig-Zag) ---
     l_fut = [laikai[-1] + timedelta(minutes=30*h) for h in range(1, 11)]
     p_fut = []
     for h in range(1, 11):
-        # Moksliškai pagrįstas judėjimas
-        triuksmas = (volatilumas * (1.1 - efficiency) * (1 if h % 2 == 0 else -1))
-        trendas = momentum * h * efficiency
-        val = dabartine + trendas + triuksmas
+        # Švelnesni, bet aiškūs prekybos posūkiai
+        posukis = (volatilumas * 0.8 * (1 if h % 2 == 0 else -1))
+        trendas = momentum * h * (efficiency + 0.2)
+        val = dabartine + trendas + posukis
         p_fut.append(val)
 
-    # --- GRAFIKAS TELEFONUI ---
+    # --- GRAFIKAS ---
     fig, ax = plt.subplots(figsize=(12, 8), facecolor='black')
     ax.set_facecolor('#0a0a0a')
     
-    # 4h Istorija
-    ist_nuo = laikai[-1] - timedelta(hours=4)
-    r_idx = next((i for i, t in enumerate(laikai) if t >= ist_nuo), 0)
-    ax.plot(laikai[r_idx:], kainos[r_idx:], color='#1a46ba', linewidth=5, alpha=0.9)
+    # 4 valandų istorija
+    pradzia_4h = laikai[-1] - timedelta(hours=4)
+    r_idx = next((i for i, t in enumerate(laikai) if t >= pradzia_4h), 0)
+    ax.plot(laikai[r_idx:], kainos[r_idx:], color='#1a46ba', linewidth=4)
     
-    # Aštri prognozės linija
-    ax.plot(l_fut, p_fut, color='#00ffcc', linewidth=6, marker='o', markersize=4)
+    # Neoninė prognozės linija
+    ax.plot(l_fut, p_fut, color='#00ffcc', linewidth=5, marker='o', markersize=3)
     
-    # --- SUMOS ANT VISŲ LŪŽIO TAŠKŲ ---
+    # --- SUMOS ANT VISŲ LŪŽIŲ ---
     for i in range(len(p_fut)):
-        # Priverstinai žymime kiekvieną lūžį
-        if i > 0 and i < len(p_fut)-1:
-            color = 'white' if p_fut[i] > p_fut[i-1] else '#ff4b4b'
-            ax.text(l_fut[i], p_fut[i] + (0.8 if p_fut[i] > p_fut[i-1] else -2.2), 
-                    f"{p_fut[i]:.1f}", color=color, fontweight='bold', ha='center', fontsize=11)
+        is_pikas = (i > 0 and i < len(p_fut)-1 and p_fut[i] > p_fut[i-1] and p_fut[i] > p_fut[i+1])
+        is_dugnas = (i > 0 and i < len(p_fut)-1 and p_fut[i] < p_fut[i-1] and p_fut[i] < p_fut[i+1])
+        
+        if is_pikas or is_dugnas or i == len(p_fut)-1:
+            color = 'white' if p_fut[i] > dabartine else '#ff4b4b'
+            offset = 0.8 if p_fut[i] > dabartine else -1.8
+            ax.text(l_fut[i], p_fut[i] + offset, f"{p_fut[i]:.1f}€", 
+                    color=color, fontweight='bold', ha='center', fontsize=10)
 
-    # --- RYŠKUS ŽALIAS GALAS (TELEFONUI) ---
-    ax.scatter(l_fut[-1], p_fut[-1], color='#00ff00', s=400, zorder=60, edgecolors='white', linewidth=2)
-    ax.text(l_fut[-1], p_fut[-1] + 1.5, "TIKSLAS", color='#00ff00', fontweight='bold', ha='center', fontsize=12)
-
-    # Indikatorius (Geltonas taškas)
-    if abs(momentum) < 0.2:
-        ax.scatter(laikai[-1], kainos[-1], color='#ffeb3b', s=250, zorder=55)
+    # --- ŽALIAS TIKSLO APSKRITIMAS (Prognozės gale) ---
+    ax.scatter(l_fut[-1], p_fut[-1], color='#00ff00', s=350, zorder=60, edgecolors='white')
+    ax.text(l_fut[-1], p_fut[-1] + 2.0, "TIKSLAS", color='#00ff00', fontweight='bold', ha='center')
 
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     ax.grid(True, alpha=0.1, color='white')
-    plt.xticks(color='gray', fontsize=12)
-    plt.yticks(color='gray', fontsize=12)
-    
+    plt.xticks(color='gray')
+    plt.yticks(color='gray')
     st.pyplot(fig)
-    st.success("✅ Prognozė sukalibruota mobiliam įrenginiui.")
 else:
-    st.warning("🔄 Jungiamasi prie Harvard Analytics serverio...")
+    st.warning("Analizuojami Harvard moksliniai duomenys...")
