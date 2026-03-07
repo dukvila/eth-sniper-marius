@@ -8,9 +8,9 @@ from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 
 # 1. Konfigūracija
-st.set_page_config(page_title="ETH V27.3 TARGET LOCK", layout="wide")
+st.set_page_config(page_title="ETH V28 VISUAL", layout="wide")
 st_autorefresh(interval=60000, key="datarefresh")
-st.title("🎯 ETH SNIPER V27.3 | TARGET LOCK")
+st.title("🛡️ ETH SNIPER V28 | VISUAL PERFECTION")
 
 def get_market_data():
     try:
@@ -30,6 +30,7 @@ if kainos:
     dabartine = kainos[-1]
     momentum = (kainos[-1] - kainos[-8]) / 8 
     nuokrypis = statistics.stdev(kainos[-20:])
+    volat = (nuokrypis / dabartine) * 100
     
     # Prognozės generavimas (8 valandos į priekį)
     l_fut = [laikai[-1] + timedelta(hours=h) for h in range(1, 10)]
@@ -38,54 +39,60 @@ if kainos:
         val = dabartine + (momentum * h) + (math.sin(h/2.2) * (nuokrypis * 0.7))
         p_fut.append(val)
 
-    # --- PIKŲ IR DUGNŲ RADIMAS ---
+    # Pelno skaičiavimas strategijos skydeliui
     max_p = max(p_fut)
-    min_p = min(p_fut)
-    piko_idx = p_fut.index(max_p)
-    dugno_idx = p_fut.index(min_p)
-    
     pelnas = max_p - dabartine
+    piko_idx = p_fut.index(max_p)
 
-    # --- REKOMENDACIJOS SKYDELIS ---
-    if momentum > 0.1 and pelnas > 1.5:
-        st.success(f"🚀 PIRKTI | Tikslas: {max_p:.1f}€ iki {l_fut[piko_idx].strftime('%H:%M')}")
-    else:
-        st.warning(f"⌛ LAUKTI | Galimas dugnas: {min_p:.1f}€ apie {l_fut[dugno_idx].strftime('%H:%M')}")
-
-    # --- GRAFIKAS ---
+    # --- BRAIŽYMAS ---
     fig, ax = plt.subplots(figsize=(14, 7), facecolor='black')
     ax.set_facecolor('#0a0a0a')
     
-    # Praeitis (mažiau) ir Ateitis (daugiau)
+    # Rodome paskutines 15 istorinių žvakių, kad fokusas būtų į ateitį
     ax.plot(laikai[-15:], kainos[-15:], color='#2962ff', linewidth=3, alpha=0.4)
     ax.plot(l_fut, p_fut, color='#00ffcc', linewidth=5)
     
-    # 1. VIRŠŪNĖS FIKSAVIMAS (Parduoti)
-    ax.scatter(l_fut[piko_idx], max_p, color='white', s=150, zorder=15, edgecolors='#00ffcc')
-    ax.text(l_fut[piko_idx], max_p + 1.5, f"PARDUOTI: {max_p:.1f}€\n({l_fut[piko_idx].strftime('%H:%M')})", 
-            color='white', fontweight='bold', ha='center', fontsize=10)
-
-    # 2. DUGNO FIKSAVIMAS (Pirkti/Pradeda kilti)
-    ax.scatter(l_fut[dugno_idx], min_p, color='white', s=150, zorder=15, edgecolors='#ff4b4b')
-    ax.text(l_fut[dugno_idx], min_p - 3.5, f"DUGNAS: {min_p:.1f}€\n({l_fut[dugno_idx].strftime('%H:%M')})", 
-            color='#ff4b4b', fontweight='bold', ha='center', fontsize=10)
-
-    # Senų pikų žymėjimas
+    # --- 1. SKAIČIŲ FIKSAVIMAS SMAIGALIUOSE (Istorija) ---
     for i in range(len(kainos[-15:])-2):
         idx = i + (len(kainos) - 15)
+        # Viršūnės smaigalys
         if (kainos[idx] > kainos[idx-1] and kainos[idx] > kainos[idx+1]):
             ax.text(laikai[idx], kainos[idx]+0.5, f"{kainos[idx]:.1f}", color='#4c8bf5', fontsize=8, ha='center')
+        # Apalios smaigalys (Dugnas)
+        elif (kainos[idx] < kainos[idx-1] and kainos[idx] < kainos[idx+1]):
+            ax.text(laikai[idx], kainos[idx]-1.5, f"{kainos[idx]:.1f}", color='#4c8bf5', fontsize=8, ha='center')
+
+    # --- 2. AKTYVUS ŽENKLIUKAS (Dabartinė kaina) ---
+    if momentum > 0.15: # Stiprus kilimas
+        simbolis = '🚀'
+    elif momentum < -0.15: # Stiprus kritimas
+        simbolis = '🪂'
+    else:
+        simbolis = '⚫' # Neutralu
+        
+    ax.text(laikai[-1], kainos[-1], simbolis, fontsize=18, ha='center', va='center', zorder=20)
+
+    # Tikslo žymėjimas (Prognozė)
+    ax.scatter(l_fut[piko_idx], max_p, color='white', s=100, zorder=15)
+    ax.text(l_fut[piko_idx], max_p + 1.5, f"{max_p:.1f}€\n({l_fut[piko_idx].strftime('%H:%M')})", 
+            color='white', fontweight='bold', ha='center', fontsize=9)
 
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-    plt.xticks(color='gray')
-    plt.yticks(color='gray')
+    plt.xticks(color='gray', fontsize=9)
+    plt.yticks(color='gray', fontsize=9)
     ax.grid(True, alpha=0.03, color='white')
     st.pyplot(fig)
 
-    # Skaitikliai
+    # Strategijos skydelis (V27 logika)
+    if momentum > 0.1 and pelnas > 1.5:
+        st.success(f"📈 PIRKTI | Tikslas: {max_p:.1f}€ iki {l_fut[piko_idx].strftime('%H:%M')}")
+    else:
+        st.warning(f"⌛ LAUKTI | Pelnas per mažas arba trendas neigiamas.")
+
+    # Skaitikliai apačioje
     c1, c2, c3 = st.columns(3)
-    c1.metric("DABARTINĖ KAINA", f"{dabartine:.2f} €")
-    c2.metric("PELNO POTENCIALAS", f"+{pelnas:.2f} €")
+    c1.metric("KAINA", f"{dabartine:.2f} €")
+    c2.metric("POTENCIALUS PELNAS", f"+{pelnas:.2f} €")
     c3.info(f"🕒 Atnaujinta: {(datetime.now() + timedelta(hours=2)).strftime('%H:%M:%S')}")
 else:
-    st.error("Jungiamasi prie Kraken...")
+    st.warning("🔄 Sinchronizuojama su Kraken...")
