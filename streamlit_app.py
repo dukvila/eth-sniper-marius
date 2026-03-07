@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 
 # 1. Konfigūracija
-st.set_page_config(page_title="ETH V74 ULTRA-STABLE", layout="wide")
+st.set_page_config(page_title="ETH V75 FLEX-SNIPER", layout="wide")
 st_autorefresh(interval=60000, key="datarefresh")
 
 def get_market_data():
@@ -43,9 +43,10 @@ if kainos and len(kainos) > 60:
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rsi = 100 - (100 / (1 + (gain.iloc[-1] / loss.iloc[-1]))) if loss.iloc[-1] > 0 else 100
     
-    # Saugumo lygiai
+    # --- DINAMINIS TIKSLAS ---
+    # Jei rinka stipri, tikslas kyla link Bollinger Bands viršaus
+    tikslas = max(1717.85, virsus) 
     stop_loss = apacia * 0.995 
-    target_1717 = 1717.85 # Tavo Revolut X tikslas
     
     # Prognozė
     momentum = (kainos[-1] - kainos[-8]) / 2.0
@@ -54,25 +55,23 @@ if kainos and len(kainos) > 60:
 
     # Signalų logika
     if dabartine <= stop_loss:
-        sig, col, txt = "⚠️ STOP LOSS", "#721c24", "Kaina žemiau saugaus lygio!"
-    elif dabartine >= virsus or rsi > 76:
-        sig, col, txt = "🔴 PARDUOTI", "#dc3545", f"Kaina viršūnėje ({virsus:.1f}€)."
-    elif dabartine <= apacia or rsi < 36:
-        sig, col, txt = "🟢 PIRKTI", "#28a745", "Dugnas pasiektas. Ruoškis šuoliui."
-    elif momentum > 0.3:
-        sig, col, txt = "🚀 KILIMAS", "#007bff", f"Tikslas: {target_1717}€."
+        sig, col, txt = "⚠️ PAVOJUS", "#721c24", "Kaina krenta per žemai. Būk atsargus!"
+    elif dabartine >= tikslas or rsi > 78:
+        sig, col, txt = "🔴 PARDUOTI", "#dc3545", f"Kaina pasiekė viršūnę ({tikslas:.1f}€)."
+    elif momentum > 0.4:
+        sig, col, txt = "🚀 KILIMAS", "#007bff", f"Judame link {tikslas:.1f}€."
     else:
-        sig, col, txt = "🟡 LAUKTI", "#ff8c00", "Rinka ieško krypties."
+        sig, col, txt = "🟡 STEBĖTI", "#ff8c00", "Laukime geresnio momento."
 
-    # Interfisas (Pilnai sutvarkytas blokas)
+    # Interfisas (Sutvarkytas)
     st.markdown(f"""
     <div style="background-color:{col}; padding:30px; border-radius:15px; text-align:center; color:white; border: 5px solid white;">
-        <h1 style="margin:0; font-size:42px;">{sig}</h1>
+        <h1 style="margin:0; font-size:45px;">{sig}</h1>
         <p style="font-size:22px; margin:15px;">{txt}</p>
-        <div style="display:flex; justify-content: space-around; background:rgba(0,0,0,0.2); padding:12px; border-radius:10px;">
-            <span>Kaina: {dabartine:.2f}€</span>
-            <span style="color:#ff4b4b;">STOP: {stop_loss:.1f}€</span>
-            <span style="color:#00ffcc;">TIKSLAS: {target_1717}€</span>
+        <div style="display:flex; justify-content: space-around; background:rgba(0,0,0,0.15); padding:10px; border-radius:8px;">
+            <span>KAINA: {dabartine:.2f}€</span>
+            <span>RSI: {rsi:.1f}</span>
+            <span>STOP: {stop_loss:.1f}€</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -82,12 +81,12 @@ if kainos and len(kainos) > 60:
     ax.set_facecolor('#0a0a0a')
     
     ax.plot(laikai[-15:], kainos[-15:], color='white', alpha=0.3)
-    ax.plot(l_fut, p_fut, color='#00ffcc', linewidth=6, marker='o', markersize=8)
+    ax.plot(l_fut, p_fut, color='#00ffcc', linewidth=6, marker='o', markersize=8, label="Prognozė")
     
-    ax.axhline(target_1717, color='cyan', linestyle='--', alpha=0.5, label="Profit Target")
-    ax.axhline(stop_loss, color='red', linestyle='-', alpha=0.6, label="Stop Loss")
+    # Dinaminės linijos
+    ax.axhline(tikslas, color='red', linestyle='--', alpha=0.5, label="Resistance")
+    ax.axhline(stop_loss, color='white', linestyle=':', alpha=0.4, label="Stop Loss")
     
-    # Sutvarkytos etiketės (be klaidų)
     for i in [2, 5, 9]:
         ax.text(l_fut[i], p_fut[i] + 1.2, f"{p_fut[i]:.1f}€", color='cyan', fontweight='bold', ha='center')
 
@@ -96,6 +95,6 @@ if kainos and len(kainos) > 60:
     plt.legend(loc='upper left', fontsize='small')
     st.pyplot(fig)
 
-    st.success(f"Sistema paruošta prekybai. RSI: {rsi:.1f}")
+    st.success(f"Sistema veikia. Paskutinis atnaujinimas: {datetime.now().strftime('%H:%M:%S')}")
 else:
-    st.warning("🔄 Jungiamasi prie Revolut X snaiperio...")
+    st.warning("🔄 Jungiamasi prie rinkos duomenų...")
