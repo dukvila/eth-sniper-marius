@@ -7,81 +7,56 @@ import urllib.request, json, statistics, math
 from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 
-# 1. Nustatymai ir Automatinis atnaujinimas (3 min geresniam tikslumui)
-st.set_page_config(page_title="ETH SNIPER V18.5 PRO", layout="wide")
-st_autorefresh(interval=180000, key="datarefresh")
-st.title("🎯 ETH SNIPER V18.5 | PRO RADAR")
+# 1. Konfigūracija
+st.set_page_config(page_title="ETH SNIPER V19 PRO", layout="wide")
+st_autorefresh(interval=120000, key="datarefresh") # Atnaujinimas kas 2 min
 
 def get_market_data():
-    sentiment = 1.0
-    # Nuotaikų gavimas
     try:
-        cp_url = "https://cryptopanic.com/api/v1/posts/?auth_token=cb3edbdd0bef024331f39e3d16bbafd8cf61208f&currencies=ETH&filter=hot"
-        with urllib.request.urlopen(cp_url, timeout=10) as r:
-            data = json.loads(r.read().decode())
-            posts = data.get('results', [])
-            pos = sum((p.get('votes', {}).get('positive', 0) + p.get('votes', {}).get('bullish', 0)) for p in posts[:12])
-            neg = sum((p.get('votes', {}).get('negative', 0) + p.get('votes', {}).get('bearish', 0)) for p in posts[:12])
-            sentiment = 1.0 + (pos - neg) / 120 # Padidintas jautrumas
-    except: sentiment = 1.0
-    
-    # Kainų gavimas iš Kraken (XETHZEUR)
-    try:
-        k_url = "https://api.kraken.com/0/public/OHLC?pair=ETHEUR&interval=60"
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        req = urllib.request.Request(k_url, headers=headers)
+        # Kraken API - paimame šviežiausius duomenis
+        k_url = "https://api.kraken.com/0/public/OHLC?pair=ETHEUR&interval=15" # 15 min tikslumas
+        req = urllib.request.Request(k_url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=10) as r:
             res = json.loads(r.read().decode())
-            d = res['result']['XETHZEUR'][-100:]
-            # Laiko korekcija (+2h Lietuvai)
+            d = res['result']['XETHZEUR'][-60:] # Paskutinė valanda su puse
             laikai = [datetime.fromtimestamp(z[0]) + timedelta(hours=2) for z in d]
             kainos = [float(z[4]) for z in d]
-            return laikai, kainos, sentiment
-    except: return [], [], 1.0
+            return laikai, kainos
+    except: return [], []
 
-# Vykdymas
-laikai, kainos, sentiment = get_market_data()
+laikai, kainos = get_market_data()
 
 if kainos:
     dabartine = kainos[-1]
-    # PATOBULINTA: Trendas skaičiuojamas pagal paskutines 4 valandas (super agresyvu)
-    nuokrypis = statistics.stdev(kainos[-48:])
-    trendas = (kainos[-1] - kainos[-4]) / 4 
-
-    l_at = [laikai[-1] + timedelta(hours=h) for h in range(25)]
+    # PATOBULINTA: Skaičiuojame ne tik trendą, bet ir jo greitį
+    diffs = np.diff(kainos)
+    pagreitis = np.mean(diffs[-5:]) # Paskutinių 5 žvakių kryptis
+    
+    nuokrypis = statistics.stdev(kainos[-20:])
+    
+    l_at = [laikai[-1] + timedelta(minutes=15*h) for h in range(20)]
     p_at = []
     
-    for h in range(25):
-        # Dinaminė V18.5 formulė
-        val = dabartine + (trendas * h) + ((math.sin(h/3.2)*(nuokrypis*0.9) + math.sin(h/0.9)*(nuokrypis*0.4)) * sentiment)
-        p_at.append(val)
+    for h in range(20):
+        # Dinaminė prognozė: jei pagreitis neigiamas, sinusas spaudžiamas žemyn
+        base = dabartine + (pagreitis * h * 1.5)
+        vibracija = (math.sin(h/2.5) * nuokrypis * 0.7)
+        p_at.append(base + vibracija)
 
     # Braižymas
-    fig, ax = plt.subplots(figsize=(14, 7), facecolor='#000000')
+    fig, ax = plt.subplots(figsize=(12, 6), facecolor='black')
     ax.set_facecolor('#0a0a0a')
-    ax.plot(l_at, p_at, color="#00ff88", linewidth=3, label="V18.5 PROGNOZĖ")
+    ax.plot(l_at, p_at, color="#ff0055" if pagreitis < 0 else "#00ff88", linewidth=3)
     
-    # Išmanieji Pikai ir Dugnai
-    for t in range(1, 24):
-        is_max = p_at[t] > p_at[t-1] and p_at[t] > p_at[t+1]
-        is_min = p_at[t] < p_at[t-1] and p_at[t] < p_at[t+1]
-        if is_max or is_min:
-            prob = min(99.5, max(60.0, (86 + (sentiment-1)*65) + math.cos(t)*5))
-            color = "#ff3333" if is_max else "#ffcc00"
-            ax.scatter(l_at[t], p_at[t], color=color, s=150, edgecolors='white', zorder=5)
-            ax.text(l_at[t], p_at[t] + (15 if is_max else -35), f"{p_at[t]:.1f}€\n{prob:.1f}%", 
-                    ha='center', color='white', fontsize=10, fontweight='bold')
+    # Žymėjimas
+    for t in range(1, 19):
+        if (p_at[t] > p_at[t-1] and p_at[t] > p_at[t+1]) or (p_at[t] < p_at[t-1] and p_at[t] < p_at[t+1]):
+            color = "#ff3333" if p_at[t] > p_at[t-1] else "#ffcc00"
+            ax.scatter(l_at[t], p_at[t], color=color, s=100)
+            ax.text(l_at[t], p_at[t]+2, f"{p_at[t]:.1f}€", color='white', fontsize=8, ha='center')
 
-    ax.grid(True, alpha=0.1, color='white')
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-    plt.xticks(color='white')
-    plt.yticks(color='white')
-    
-    st.info(f"⚡ Būsena: Agresyvus Radaras | Nuotaika {sentiment:.2f} | Atnaujinta: {datetime.now().strftime('%H:%M:%S')}")
+    ax.grid(alpha=0.1)
     st.pyplot(fig)
-    
-    col1, col2 = st.columns(2)
-    col1.metric("Dabartinė Kaina", f"{dabartine:.2f} €", f"{trendas:.2f} €/h")
-    col2.metric("24h Prognozė", f"{p_at[-1]:.2f} €")
+    st.metric("Dabartinė Kaina", f"{dabartine:.2f} €", f"{pagreitis:.2f} (Pagreitis)")
 else:
-    st.error("Nepavyko pasiekti Kraken duomenų. Patikrink interneto ryšį.")
+    st.error("Laukiama duomenų...")
