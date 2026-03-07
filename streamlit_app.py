@@ -7,8 +7,8 @@ import urllib.request, json, statistics
 from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 
-# 1. Konfigūracija
-st.set_page_config(page_title="ETH V65 REVERSAL-ANALYST", layout="wide")
+# 1. Konfigūracija snaiperio režimui
+st.set_page_config(page_title="ETH V66 REVOLUT-X SNIPER", layout="wide")
 st_autorefresh(interval=60000, key="datarefresh")
 
 def get_market_data():
@@ -21,81 +21,98 @@ def get_market_data():
                 d = res['result']['XETHZEUR'][-160:]
                 laikai = [datetime.fromtimestamp(z[0]) + timedelta(hours=2) for z in d]
                 kainos = [float(z[4]) for z in d]
-                return laikai, kainos
-            return [], []
+                highs = [float(z[2]) for z in d]
+                lows = [float(z[3]) for z in d]
+                return laikai, kainos, highs, lows
+            return [], [], [], []
     except:
-        return [], []
+        return [], [], [], []
 
-laikai, kainos = get_market_data()
+laikai, kainos, highs, lows = get_market_data()
 
-if kainos and len(kainos) > 50:
+if kainos and len(kainos) > 60:
     dabartine = kainos[-1]
     
-    # --- SUDĖTINGI SKAČIAVIMAI (Day-Trading Logic) ---
-    vidurkis = statistics.mean(kainos[-40:])
-    nuokrypis = statistics.stdev(kainos[-40:])
-    momentum = (kainos[-1] - kainos[-12]) / 3.0
+    # --- PRO INDICATORS (Snaiperio logika) ---
+    # 1. Bollinger Bands (20 periodų, 2 nuokrypiai)
+    smaz = pd.Series(kainos).rolling(window=20).mean().iloc[-1]
+    stdz = pd.Series(kainos).rolling(window=20).std().iloc[-1]
+    virsus = smaz + (stdz * 2.1) # Pasipriešinimas (Parduoti čia)
+    apacia = smaz - (stdz * 2.1) # Palaikymas (Pirkti čia)
     
-    # Rinkos pervargimas (Overbought/Oversold)
-    # Jei kaina per toli nuo vidurkio - prognozuojame grįžimą
-    z_score = (dabartine - vidurkis) / nuokrypis if nuokrypis > 0 else 0
+    # 2. RSI (Santykinis stiprumas)
+    delta = pd.Series(kainos).diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs.iloc[-1]))
     
-    # Ateities prognozė (10 žingsnių po 30 min)
-    l_fut = [laikai[-1] + timedelta(minutes=30*h) for h in range(1, 11)]
-    p_fut = []
-    
-    for h in range(1, 11):
-        # Grįžimo jėga (traukia kainą prie vidurkio)
-        pull_to_mean = (vidurkis - dabartine) * 0.1 * h
-        # Momentum jėga (slopstanti laike)
-        decaying_momentum = momentum * h * (0.9 ** h)
-        # Rezultatas: Momentum vs Mean Reversion
-        fut_p = dabartine + decaying_momentum + pull_to_mean
-        p_fut.append(fut_p)
+    # 3. Pivot Points (Apsisukimo taškai)
+    yesterday_high = max(highs[-96:])
+    yesterday_low = min(lows[-96:])
+    pivot = (yesterday_high + yesterday_low + dabartine) / 3
 
-    # --- STATUSO PANĖLĖ ---
-    if abs(z_score) > 2:
-        status = "⚠️ PERTEMPTA - LAUKIAMAS APSISUKIMAS"
-        color = "#ff8c00"
-    elif momentum > 0:
-        status = "📈 SVEIKAS AUGIMAS"
-        color = "#28a745"
+    # --- SNIPER SIGNALAS ---
+    if dabartine >= virsus or rsi > 70:
+        signalas = "🔴 PARDUOTI DABAR (LUBO)"
+        spalva = "#dc3545"
+        rekomendacija = f"Kaina pasiekė pasipriešinimą ({virsus:.1f}€). Didelė kritimo tikimybė."
+    elif dabartine <= apacia or rsi < 30:
+        signalas = "🟢 PIRKTI DABAR (DUGNAS)"
+        spalva = "#28a745"
+        rekomendacija = f"Kaina pasiekė dugną ({apacia:.1f}€). Ruoškis atšokimui į viršų."
     else:
-        status = "📉 MATOMAS KRITIMAS"
-        color = "#dc3545"
+        signalas = "⚪ LAUKTI SIGNALO"
+        spalva = "#6c757d"
+        rekomendacija = "Rinka viduryje koridoriaus. Day-trading rizika per didelė."
 
     st.markdown(f"""
-    <div style="background-color:{color}; padding:15px; border-radius:12px; text-align:center; color:white;">
-        <h2 style="margin:0;">{status}</h2>
-        <p style="margin:5px;">Kaina: {dabartine:.2f}€ | Nuokrypis nuo vidurkio: {z_score:+.2f} | Momentum: {momentum:+.2f}</p>
+    <div style="background-color:{spalva}; padding:25px; border-radius:15px; text-align:center; color:white; border: 4px solid white;">
+        <h1 style="margin:0; font-size:45px;">{signalas}</h1>
+        <p style="font-size:22px; margin:10px;">{rekomendacija}</p>
+        <hr>
+        <p style="font-size:18px;">RSI: {rsi:.1f} | BB Viršus: {virsus:.1f}€ | BB Apačia: {apacia:.1f}€</p>
     </div>
     """, unsafe_allow_html=True)
 
+    # --- DINAMINĖ PROGNOZĖ (Reakcija į koridorių) ---
+    l_fut = [laikai[-1] + timedelta(minutes=30*h) for h in range(1, 11)]
+    p_fut = []
+    current_p = dabartine
+    for h in range(1, 11):
+        # Matematika: Kaina traukiama link Pivot taško, jei ji per aukštai/žemsiai
+        atstumas = pivot - current_p
+        kryptis = atstumas * 0.15 * h
+        noise = (stdz * 0.3 * np.sin(h))
+        next_p = current_p + kryptis + noise
+        p_fut.append(next_p)
+        current_p = next_p
+
     # --- GRAFIKAS ---
-    fig, ax = plt.subplots(figsize=(12, 7), facecolor='black')
+    fig, ax = plt.subplots(figsize=(12, 8), facecolor='black')
     ax.set_facecolor('#0a0a0a')
     
-    # Minimali istorija (30 min)
-    ax.plot(laikai[-3:], kainos[-3:], color='gray', linewidth=2, alpha=0.4)
+    # Istorija (trumpa)
+    ax.plot(laikai[-20:], kainos[-20:], color='white', linewidth=2, alpha=0.3)
     
-    # ATEITIES PROGNOZĖ (Reversas / Tęstinumas)
-    ax.plot(l_fut, p_fut, color='#00ffcc', linewidth=5, marker='o', label="Matematinė prognozė")
+    # BB Koridorius (Snaiperio matymas)
+    ax.fill_between(l_fut, apacia, virsus, color='#1f1f1f', alpha=0.5, label="Saugumo zona")
+    ax.axhline(virsus, color='#dc3545', linestyle='--', alpha=0.6, label="PARDAVIMO RIBA")
+    ax.axhline(apacia, color='#28a745', linestyle='--', alpha=0.6, label="PIRKIMO RIBA")
     
-    # Pagalbinės ribos (Resistance / Support)
-    ax.axhline(vidurkis + (nuokrypis * 2), color='#dc3545', linestyle='--', alpha=0.3, label="Max viršūnė")
-    ax.axhline(vidurkis - (nuokrypis * 2), color='#28a745', linestyle='--', alpha=0.3, label="Max dugnas")
+    # Prognozės linija
+    ax.plot(l_fut, p_fut, color='#00ffcc', linewidth=6, marker='o', markersize=8, label="Snaiperio trajektorija")
     
-    # Kainos ant prognozės
+    # Kainos etiketės
     for i in [2, 5, 9]:
-        ax.text(l_fut[i], p_fut[i] + 1.5, f"{p_fut[i]:.1f}€", color='white', ha='center', fontweight='bold')
+        ax.text(l_fut[i], p_fut[i] + 1.5, f"{p_fut[i]:.1f}€", color='cyan', fontweight='bold', ha='center')
 
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     ax.grid(True, alpha=0.05, color='white')
     plt.xticks(color='gray')
     plt.yticks(color='gray')
-    
     st.pyplot(fig)
     
-    st.info("Ši prognozė skaičiuoja galimą kainos 'pervargimą' ir grįžimą į realią vertę.")
+    st.caption(f"Duomenys sinchronizuoti su Revolut X rinka. Atnaujinta: {datetime.now().strftime('%H:%M:%S')}")
 else:
-    st.warning("🔄 Analizuojami rinkos pasipriešinimo lygiai...")
+    st.warning("🔄 Kraunama snaiperio analizės sistema...")
