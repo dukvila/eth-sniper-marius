@@ -5,66 +5,84 @@ import numpy as np
 import urllib.request, json, statistics, math
 from datetime import datetime, timedelta
 
-# 1. Terminalo Konfigūracija
-st.set_page_config(page_title="ETH V21.1 ELITE", layout="wide")
-st.title("🛡️ ETH SNIPER V21.1 | ELITE TERMINAL")
+# 1. Konfigūracija
+st.set_page_config(page_title="ETH V22 HYPER-SENSE", layout="wide")
+st.title("⚡ ETH SNIPER V22 | HYPER-SENSE TERMINAL")
 
-def get_pro_data():
+def get_market_engine():
     try:
+        # Kraken 15min duomenys
         url = "https://api.kraken.com/0/public/OHLC?pair=ETHEUR&interval=15"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=10) as r:
             res = json.loads(r.read().decode())
-            d = res['result']['XETHZEUR'][-60:]
+            d = res['result']['XETHZEUR'][-100:]
             laikai = [datetime.fromtimestamp(z[0]) + timedelta(hours=2) for z in d]
             kainos = [float(z[4]) for z in d]
-            return laikai, kainos
-    except: return [], []
+            aukstos = [float(z[2]) for z in d]
+            zemos = [float(z[3]) for z in d]
+            return laikai, kainos, aukstas, zemos
+    except: return [], [], [], []
 
-laikai, kainos = get_pro_data()
+laikai, kainos, aukstas, zemos = get_market_engine()
 
 if kainos:
+    # --- PROFESIONALŪS INDIKATORIAI (TradingView logika) ---
     dabartine = kainos[-1]
-    jega = (kainos[-1] - kainos[-4]) / 4 
-    nuokrypis = statistics.stdev(kainos[-20:])
+    ema_20 = statistics.mean(kainos[-20:])
+    rsi_val = 50 + ( (dabartine - ema_20) / statistics.stdev(kainos[-40:]) * 10 ) # Emuliuotas RSI
+    momentum = (kainos[-1] - kainos[-8]) / 8
     
-    # --- VOLATILITY ALERT SISTEMA ---
-    # Skaičiuojame momentinį svyravimą (procentais)
-    svyravimas = (nuokrypis / dabartine) * 100
-    
-    if svyravimas > 0.5: # Jei svyravimas viršija 0.5%, tai jau pavojinga
-        st.error(f"⚠️ DĖMESIO: DIDELIS SVYRAVIMAS ({svyravimas:.2f}%)! Rinka tampa nenuspėjama.")
-    elif svyravimas < 0.1:
-        st.success(f"✅ RAMI RINKA ({svyravimas:.2f}%). Svyravimai minimalūs.")
-    else:
-        st.warning(f"🟡 VIDUTINIS JUDĖJIMAS ({svyravimas:.2f}%). Stebėkite momentumą.")
-
-    # Prognozės generavimas (8 valandos)
-    l_fut = [laikai[-1] + timedelta(hours=h) for h in range(9)]
+    # --- PROGNOZĖS IR FAKTŲ SUTAPIMO MODELIS ---
+    l_fut = [laikai[-1] + timedelta(hours=h) for h in range(10)]
     p_fut = []
-    for h in range(9):
-        val = dabartine + (jega * h) + (math.sin(h/2) * (nuokrypis * 0.5))
+    
+    # Savireguliacija: jei RSI per aukštas (>70), prognozė automatiškai spaudžiama žemyn
+    korekcija = 0.8 if rsi_val > 65 else 1.2 if rsi_val < 35 else 1.0
+    
+    for h in range(10):
+        val = dabartine + (momentum * h * korekcija) + (math.sin(h/1.8) * statistics.stdev(kainos[-20:]) * 0.6)
         p_fut.append(val)
 
-    # Braižymas
-    fig, ax = plt.subplots(figsize=(12, 6), facecolor='#060606')
-    ax.set_facecolor('#060606')
-    ax.plot(laikai[-20:], kainos[-20:], color='#1a73e8', alpha=0.4, label="ISTORIJA")
-    ax.plot(l_fut, p_fut, color='#00ffcc', linewidth=3, label="PROGNOZĖ")
+    # --- BRAIŽYMAS ---
+    fig, ax = plt.subplots(figsize=(14, 7), facecolor='black')
+    ax.set_facecolor('#080808')
     
-    # Tikslai
-    pikas, dugnas = max(p_fut), min(p_fut)
-    for i, val in enumerate(p_fut):
-        if val == pikas or val == dugnas:
-            ax.scatter(l_fut[i], val, color='#ff4444' if val == pikas else '#ffbb00', s=120, zorder=5)
-            ax.text(l_fut[i], val + 1, f"{val:.1f}€", color='white', ha='center', fontweight='bold')
+    # 1. Istorinė linija su kampų žymėjimu
+    ax.plot(laikai[-30:], kainos[-30:], color='#2962ff', linewidth=2, alpha=0.8, label="ISTORIJA")
+    
+    # FAKTINIAI KAMPŲ SKAIČIAI (Praeities pikai)
+    for i in range(len(kainos[-30:])-1):
+        idx = i + (len(kainos) - 30)
+        if (kainos[idx] > kainos[idx-1] and kainos[idx] > kainos[idx+1]):
+            ax.text(laikai[idx], kainos[idx]+1, f"{kainos[idx]:.1f}", color='#4c8bf5', fontsize=8, ha='center')
+        if (kainos[idx] < kainos[idx-1] and kainos[idx] < kainos[idx+1]):
+            ax.text(laikai[idx], kainos[idx]-3, f"{kainos[idx]:.1f}", color='#4c8bf5', fontsize=8, ha='center')
 
-    ax.grid(True, alpha=0.05, color='white')
+    # 2. Prognozės linija
+    ax.plot(l_fut, p_fut, color='#00ffcc', linewidth=4, label="V22 HYPER PROGNOZĖ")
+    
+    # Prognozės taškai
+    for i, val in enumerate(p_fut):
+        if val == max(p_fut) or val == min(p_fut):
+            ax.scatter(l_fut[i], val, color='#00ffcc', s=100, edgecolors='white')
+            ax.text(l_fut[i], val+2, f"TIKSLAS: {val:.1f}€", color='white', fontweight='bold', ha='center')
+
+    ax.grid(True, alpha=0.03, color='white')
     st.pyplot(fig)
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("REALI KAINA", f"{dabartine:.2f} €")
-    c2.metric("MOMENTUM", f"{jega:.2f}", delta=f"{jega:.2f} €/15min")
-    c3.metric("VOLATILITY INDEX", f"{svyravimas:.3f}%")
+    # --- ANALITINIS SKYDELIS (TradingView stiliaus) ---
+    st.subheader("📊 TECHNINĖS ANALIZĖS KONSENSUSAS")
+    c1, c2, c3, c4 = st.columns(4)
+    
+    status = "STIPRU PIRKTI" if rsi_val < 40 else "STIPRU PARDUOTI" if rsi_val > 60 else "NEUTRALU"
+    c1.metric("REALI KAINA", f"{dabartine:.2f} €", f"{momentum:.2f}")
+    c2.metric("EMULIUOTAS RSI", f"{rsi_val:.1f}", status)
+    c3.metric("MOMENTUM JĖGA", f"{momentum:.2f}")
+    
+    volat = (statistics.stdev(kainos[-20:]) / dabartine) * 100
+    c4.metric("RINKOS NERVINGUMAS", f"{volat:.2f}%")
+
+    st.info("💡 V22 naudoja hibridinį modelį: Prognozė koreguojama pagal RSI ir Momentum sutapimą.")
 else:
-    st.error("Terminalas negali pasiekti duomenų.")
+    st.error("Nepavyko gauti duomenų.")
