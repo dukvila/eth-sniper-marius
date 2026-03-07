@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 
 # 1. Konfigūracija
-st.set_page_config(page_title="ETH V69 FINAL-FIX", layout="wide")
+st.set_page_config(page_title="ETH V70 ULTRA-SNIPER", layout="wide")
 st_autorefresh(interval=60000, key="datarefresh")
 
 def get_market_data():
@@ -23,20 +23,18 @@ def get_market_data():
                 kainos = [float(z[4]) for z in d]
                 highs = [float(z[2]) for z in d]
                 lows = [float(z[3]) for z in d]
-                volumes = [float(z[6]) for z in d]
-                return laikai, kainos, highs, lows, volumes
+                vols = [float(z[6]) for z in d]
+                return laikai, kainos, highs, lows, vols
             return [], [], [], [], []
     except:
         return [], [], [], [], []
 
-laikai, kainos, highs, lows, volumes = get_market_data()
+laikai, kainos, highs, lows, vols = get_market_data()
 
 if kainos and len(kainos) > 60:
     dabartine = kainos[-1]
-    vid_vol = statistics.mean(volumes[-20:])
-    vol_force = volumes[-1] / vid_vol if vid_vol > 0 else 1
     
-    # --- SKAIČIAVIMAI (Sutvarkyta logika) ---
+    # --- MATEMATINIS MODELIS (Ištaisytas) ---
     smaz = pd.Series(kainos).rolling(window=20).mean().iloc[-1]
     stdz = pd.Series(kainos).rolling(window=20).std().iloc[-1]
     virsus = smaz + (stdz * 2.1)
@@ -48,33 +46,51 @@ if kainos and len(kainos) > 60:
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rsi = 100 - (100 / (1 + (gain.iloc[-1] / loss.iloc[-1]))) if loss.iloc[-1] > 0 else 100
     
-    # Agresyvi prognozė
+    # Prognozė
     momentum = (kainos[-1] - kainos[-8]) / 2.0
     l_fut = [laikai[-1] + timedelta(minutes=30*h) for h in range(1, 11)]
     p_fut = []
     for h in range(1, 11):
-        fut_val = dabartine + (momentum * h * 0.9) + (stdz * 0.1 * np.sin(h))
-        p_fut.append(fut_val)
-    
-    prog_max = max(p_fut)
+        p_fut.append(dabartine + (momentum * h * 0.85) + (stdz * 0.1 * np.sin(h)))
 
-    # --- SIGNALAI (Ištaisytos SyntaxErrors) ---
+    # --- AGRESYVŪS SIGNALAI ---
     if dabartine >= virsus or rsi > 76:
-        signalas = "🔴 PARDUOTI (RIBA PASIEKTA)"
+        signalas = "🔴 PARDUOTI (STABDYMAS)"
         spalva = "#dc3545"
-        txt = f"Kaina virš koridoriaus ({virsus:.1f}€). Rizika didelė."
-    elif (dabartine <= apacia or rsi < 36) and vol_force > 1.1:
+        zinute = f"Kaina pasiekė viršūnę ({virsus:.1f}€). Rizikinga laikyti."
+    elif dabartine <= apacia or rsi < 36:
         signalas = "🟢 PIRKTI (ATSPIRKIMAS)"
         spalva = "#28a745"
-        txt = "Dugnas su geromis apimtimis. Geras įėjimo taškas."
-    elif momentum > 0.4 and vol_force > 1.0:
-        signalas = "🚀 TĘSTI PIRKIMĄ (STIPRUS TRENDAS)"
+        zinute = "Dugnas pasiektas. Galimas kilimas aukštyn."
+    elif momentum > 0.4:
+        signalas = "🚀 TĘSTI PIRKIMĄ"
         spalva = "#007bff"
-        txt = f"Trendas stiprus. Tikslas: {prog_max:.1f}€"
+        zinute = "Trendas stiprus, apimtys patvirtina judėjimą."
     else:
-        signalas = "🟡 STEBĖTI SIGNALĄ"
+        signalas = "🟡 STEBĖTI TRENDĄ"
         spalva = "#ff8c00"
-        txt = "Rinka be aiškios krypties viduryje koridoriaus."
+        zinute = "Rinka be aiškios krypties."
 
     st.markdown(f"""
-    <div
+    <div style="background-color:{spalva}; padding:25px; border-radius:15px; text-align:center; color:white; border: 4px solid white;">
+        <h1 style="margin:0;">{signalas}</h1>
+        <p style="font-size:20px; margin:10px;">{zinute}</p>
+        <p style="font-size:16px;">Kaina: {dabartine:.2f}€ | RSI: {rsi:.1f}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # --- GRAFIKAS (Sutvarkytas braižymas) ---
+    fig, ax1 = plt.subplots(figsize=(12, 7), facecolor='black')
+    ax1.set_facecolor('#0a0a0a')
+    
+    # Praeitis ir Prognozė
+    ax1.plot(laikai[-10:], kainos[-10:], color='white', alpha=0.3)
+    ax1.plot(l_fut, p_fut, color='#00ffcc', linewidth=6, marker='o', markersize=8)
+    
+    # Tavo 1717€ riba
+    ax1.axhline(1717.8, color='red', linestyle='--', alpha=0.4, label="Resistance")
+    
+    for i in [2, 5, 9]:
+        ax1.text(l_fut[i], p_fut[i] + 1.2, f"{p_fut[i]:.1f}€", color='cyan', fontweight='bold', ha='center')
+
+    ax1.
