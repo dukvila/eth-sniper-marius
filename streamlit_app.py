@@ -8,9 +8,9 @@ from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 
 # 1. Konfigūracija
-st.set_page_config(page_title="ETH V26 STRATEGY", layout="wide")
+st.set_page_config(page_title="ETH V27 PROFIT ANALYZER", layout="wide")
 st_autorefresh(interval=60000, key="datarefresh")
-st.title("🛡️ ETH SNIPER V26 | STRATEGY ENGINE")
+st.title("💰 ETH SNIPER V27 | PROFIT ANALYZER")
 
 def get_market_data():
     try:
@@ -32,63 +32,42 @@ if kainos:
     nuokrypis = statistics.stdev(kainos[-20:])
     volat = (nuokrypis / dabartine) * 100
     
-    # --- STRATEGIJOS LOGIKA ---
-    if momentum > 0.15 and volat < 0.5:
-        rekomendacija = "🚀 PIRKTI (STIPRUS TRENDAS)"
-        spalva = "green"
-    elif momentum < -0.15 and volat < 0.5:
-        rekomendacija = "📉 PARDUOTI (KRITIMO RIZIKA)"
-        spalva = "red"
-    else:
-        rekomendacija = "⌛ LAUKTI (NEUTRALŪS DUOMENYS)"
-        spalva = "orange"
-
-    # Rekomendacijos rodymas viršuje
-    st.markdown(f"""
-        <div style="background-color: {spalva}; padding: 20px; border-radius: 10px; text-align: center;">
-            <h1 style="color: white; margin: 0;">REKOMENDACIJA: {rekomendacija}</h1>
-        </div>
-    """, unsafe_allow_html=True)
-
-    # Prognozė (8 valandos)
+    # Prognozės generavimas (iki 9 valandų į priekį)
     l_fut = [laikai[-1] + timedelta(hours=h) for h in range(1, 10)]
     p_fut = []
     for h in range(1, 10):
         val = dabartine + (momentum * h) + (math.sin(h/2.2) * (nuokrypis * 0.7))
         p_fut.append(val)
 
-    # --- BRAIŽYMAS ---
+    # --- PELNO IR LAIKO ANALIZĖ ---
+    max_p_fut = max(p_fut)
+    tikėtinas_pelnas = max_p_fut - dabartine
+    piko_idx = p_fut.index(max_p_fut)
+    piko_laikas = l_fut[piko_idx]
+    
+    # Strategijos nustatymas
+    if momentum > 0.1 and tikėtinas_pelnas > 2.0:
+        statusas = "🚀 PIRKTI"
+        spalva = "#28a745" # Žalia
+        detalės = f"Tikėtinas pelnas: +{tikėtinas_pelnas:.2f}€ | Parduoti iki {piko_laikas.strftime('%H:%M')}"
+    elif momentum < -0.1:
+        statusas = "📉 PARDUOTI / LAUKTI"
+        spalva = "#dc3545" # Raudona
+        detalės = "Rinka krenta. Kitas galimas dugnas prognozuojamas žemiau."
+    else:
+        statusas = "⌛ NEUTRALU"
+        spalva = "#ffc107" # Geltona
+        detalės = "Per mažas pelno potencialas arba rinka stovi vietoje."
+
+    # --- REKOMENDACIJOS SKYDELIS ---
+    st.markdown(f"""
+        <div style="background-color: {spalva}; padding: 25px; border-radius: 15px; text-align: center; color: white;">
+            <h1 style="margin: 0;">{statusas}</h1>
+            <h3 style="margin: 10px 0 0 0; opacity: 0.9;">{detalės}</h3>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # --- GRAFIKAS ---
     fig, ax = plt.subplots(figsize=(14, 6), facecolor='black')
     ax.set_facecolor('#0a0a0a')
-    ax.plot(laikai[-40:], kainos[-40:], color='#2962ff', linewidth=2, alpha=0.5)
-    ax.plot(l_fut, p_fut, color='#00ffcc', linewidth=4)
-    
-    # Kampų žymėjimas
-    for i in range(len(kainos[-40:])-2):
-        idx = i + (len(kainos) - 40)
-        if (kainos[idx] > kainos[idx-1] and kainos[idx] > kainos[idx+1]):
-            ax.text(laikai[idx], kainos[idx]+0.5, f"{kainos[idx]:.1f}", color='#4c8bf5', fontsize=8, ha='center')
-
-    # Ašies formatas
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-    plt.xticks(color='gray')
-    plt.yticks(color='gray')
-    ax.grid(True, alpha=0.03, color='white')
-    
-    # Prognozės pikai
-    pikas, dugnas = max(p_fut), min(p_fut)
-    for i, val in enumerate(p_fut):
-        if val == pikas or val == dugnas:
-            ax.scatter(l_fut[i], val, color='white', s=80, zorder=10)
-            ax.text(l_fut[i], val + (2 if val==pikas else -4), f"{val:.1f}€\n({l_fut[i].strftime('%H:%M')})", color='white', ha='center')
-
-    st.pyplot(fig)
-
-    # Apatinis skydelis
-    c1, c2, c3 = st.columns(3)
-    c1.metric("REALI KAINA", f"{dabartine:.2f} €")
-    c2.metric("MOMENTUMAS", f"{momentum:.2f} €/h")
-    dabar_lt = datetime.now() + timedelta(hours=2)
-    st.info(f"🕒 Atnaujinta: {dabar_lt.strftime('%H:%M:%S')} | Rinka: {'STABILI' if volat < 0.3 else 'AKTYVI'}")
-else:
-    st.error("Duomenų sinchronizacija...")
+    ax.plot(laikai[-
