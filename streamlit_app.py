@@ -8,9 +8,9 @@ from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 
 # 1. Konfigūracija
-st.set_page_config(page_title="ETH V27.2 FUTURE FOCUS", layout="wide")
+st.set_page_config(page_title="ETH V27.3 TARGET LOCK", layout="wide")
 st_autorefresh(interval=60000, key="datarefresh")
-st.title("💰 ETH SNIPER V27.2 | FUTURE FOCUS")
+st.title("🎯 ETH SNIPER V27.3 | TARGET LOCK")
 
 def get_market_data():
     try:
@@ -30,64 +30,62 @@ if kainos:
     dabartine = kainos[-1]
     momentum = (kainos[-1] - kainos[-8]) / 8 
     nuokrypis = statistics.stdev(kainos[-20:])
-    volat = (nuokrypis / dabartine) * 100
     
     # Prognozės generavimas (8 valandos į priekį)
-    l_fut = [laikai[-1] + timedelta(hours=h) for h in range(1, 9)]
+    l_fut = [laikai[-1] + timedelta(hours=h) for h in range(1, 10)]
     p_fut = []
-    for h in range(1, 9):
+    for h in range(1, 10):
         val = dabartine + (momentum * h) + (math.sin(h/2.2) * (nuokrypis * 0.7))
         p_fut.append(val)
 
-    # --- PELNO ANALIZĖ ---
-    max_p_fut = max(p_fut)
-    pelnas = max_p_fut - dabartine
-    piko_idx = p_fut.index(max_p_fut)
-    piko_laikas = l_fut[piko_idx]
+    # --- PIKŲ IR DUGNŲ RADIMAS ---
+    max_p = max(p_fut)
+    min_p = min(p_fut)
+    piko_idx = p_fut.index(max_p)
+    dugno_idx = p_fut.index(min_p)
     
+    pelnas = max_p - dabartine
+
+    # --- REKOMENDACIJOS SKYDELIS ---
     if momentum > 0.1 and pelnas > 1.5:
-        statusas, spalva = "🚀 PIRKTI", "#28a745"
-        detales = f"Tikėtinas pelnas: +{pelnas:.2f}€ | Parduoti iki {piko_laikas.strftime('%H:%M')}"
-    elif momentum < -0.1:
-        statusas, spalva = "📉 LAUKTI / PARDUOTI", "#dc3545"
-        detales = "Trendas neigiamas. Kaina artėja prie žemesnio taško."
+        st.success(f"🚀 PIRKTI | Tikslas: {max_p:.1f}€ iki {l_fut[piko_idx].strftime('%H:%M')}")
     else:
-        statusas, spalva = "⌛ NEUTRALU", "#ffc107"
-        detales = f"Pelnas per mažas (+{pelnas:.2f}€). Rizika didesnė už grąžą."
+        st.warning(f"⌛ LAUKTI | Galimas dugnas: {min_p:.1f}€ apie {l_fut[dugno_idx].strftime('%H:%M')}")
 
-    st.markdown(f'<div style="background-color:{spalva};padding:20px;border-radius:10px;text-align:center;color:white;"><h1>{statusas}</h1><h3>{detales}</h3></div>', unsafe_allow_html=True)
-
-    # --- GRAFIKAS (Fokusas į ateitį) ---
+    # --- GRAFIKAS ---
     fig, ax = plt.subplots(figsize=(14, 7), facecolor='black')
     ax.set_facecolor('#0a0a0a')
     
-    # Rodome tik paskutines 15 istorinių žvakių (apie 4 valandas), kad atlaisvintume vietos prognozei
-    ax.plot(laikai[-15:], kainos[-15:], color='#2962ff', linewidth=3, alpha=0.6, label="Istorija (4h)")
-    ax.plot(l_fut, p_fut, color='#00ffcc', linewidth=5, label="Prognozė (8h)")
+    # Praeitis (mažiau) ir Ateitis (daugiau)
+    ax.plot(laikai[-15:], kainos[-15:], color='#2962ff', linewidth=3, alpha=0.4)
+    ax.plot(l_fut, p_fut, color='#00ffcc', linewidth=5)
     
-    # Praeities pikai (tik matomoje dalyje)
+    # 1. VIRŠŪNĖS FIKSAVIMAS (Parduoti)
+    ax.scatter(l_fut[piko_idx], max_p, color='white', s=150, zorder=15, edgecolors='#00ffcc')
+    ax.text(l_fut[piko_idx], max_p + 1.5, f"PARDUOTI: {max_p:.1f}€\n({l_fut[piko_idx].strftime('%H:%M')})", 
+            color='white', fontweight='bold', ha='center', fontsize=10)
+
+    # 2. DUGNO FIKSAVIMAS (Pirkti/Pradeda kilti)
+    ax.scatter(l_fut[dugno_idx], min_p, color='white', s=150, zorder=15, edgecolors='#ff4b4b')
+    ax.text(l_fut[dugno_idx], min_p - 3.5, f"DUGNAS: {min_p:.1f}€\n({l_fut[dugno_idx].strftime('%H:%M')})", 
+            color='#ff4b4b', fontweight='bold', ha='center', fontsize=10)
+
+    # Senų pikų žymėjimas
     for i in range(len(kainos[-15:])-2):
         idx = i + (len(kainos) - 15)
         if (kainos[idx] > kainos[idx-1] and kainos[idx] > kainos[idx+1]):
-            ax.text(laikai[idx], kainos[idx]+0.5, f"{kainos[idx]:.1f}", color='#4c8bf5', fontsize=9, ha='center')
+            ax.text(laikai[idx], kainos[idx]+0.5, f"{kainos[idx]:.1f}", color='#4c8bf5', fontsize=8, ha='center')
 
-    # Tikslo žymėjimas (Ryškus taškas ateityje)
-    ax.scatter(piko_laikas, max_p_fut, color='white', s=150, zorder=10, edgecolors='#00ffcc')
-    ax.text(piko_laikas, max_p_fut + 1.2, f"TIKSLAS: {max_p_fut:.1f}€\n({piko_laikas.strftime('%H:%M')})", 
-            color='white', fontweight='bold', ha='center', fontsize=10)
-
-    # Laiko ašies formatavimas
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-    ax.xaxis.set_major_locator(mdates.HourLocator(interval=1))
-    plt.xticks(color='gray', fontsize=9)
-    plt.yticks(color='gray', fontsize=9)
+    plt.xticks(color='gray')
+    plt.yticks(color='gray')
     ax.grid(True, alpha=0.03, color='white')
     st.pyplot(fig)
 
     # Skaitikliai
     c1, c2, c3 = st.columns(3)
     c1.metric("DABARTINĖ KAINA", f"{dabartine:.2f} €")
-    c2.metric("POTENCIALUS PELNAS", f"+{pelnas:.2f} €")
-    c3.info(f"🕒 LT Laikas: {(datetime.now() + timedelta(hours=2)).strftime('%H:%M:%S')}")
+    c2.metric("PELNO POTENCIALAS", f"+{pelnas:.2f} €")
+    c3.info(f"🕒 Atnaujinta: {(datetime.now() + timedelta(hours=2)).strftime('%H:%M:%S')}")
 else:
-    st.warning("🔄 Kraunami šviežiausi duomenys...")
+    st.error("Jungiamasi prie Kraken...")
