@@ -8,9 +8,9 @@ from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 
 # 1. Konfigūracija
-st.set_page_config(page_title="ETH V35 WAVE PRECISION", layout="wide")
+st.set_page_config(page_title="ETH V36 WAVE MASTER", layout="wide")
 st_autorefresh(interval=60000, key="datarefresh")
-st.title("🛡️ ETH SNIPER V35 | WAVE PRECISION")
+st.title("🛡️ ETH SNIPER V36 | WAVE MASTER")
 
 def get_market_data():
     try:
@@ -31,12 +31,12 @@ if kainos:
     momentum = (kainos[-1] - kainos[-8]) / 2 
     nuokrypis = statistics.stdev(kainos[-20:])
     
-    # --- ŠOKINĖJANTI PROGNOZĖ (WAVE MODEL) ---
+    # --- PROGNOZĖ SU BANGOMIS ---
     l_fut = [laikai[-1] + timedelta(hours=h) for h in range(1, 11)]
     p_fut = []
     for h in range(1, 11):
-        # Sukuriame sudėtinę bangą: trendas + pagrindinė banga + smulkus triukšmas
-        banga = (math.sin(h/1.2) * (nuokrypis * 1.5)) + (math.cos(h/0.8) * (nuokrypis * 0.5))
+        # Sukuriame sudėtinį svyravimą (bangas)
+        banga = (math.sin(h/1.3) * (nuokrypis * 1.6)) + (math.cos(h/0.7) * (nuokrypis * 0.4))
         val = dabartine + (momentum * h) + banga
         p_fut.append(val)
 
@@ -48,7 +48,7 @@ if kainos:
 
     # --- SPRENDIMŲ SKYDELIS ---
     if momentum > 0.3 and pelnas_eur > 3.0:
-        st.markdown(f'<div style="background-color:#28a745;padding:20px;border-radius:15px;text-align:center;color:white;"><h1>🚀 VERTA PIRKTI</h1><h3>Pikas: {max_p:.1f}€ | Numatomas atšokimas: {min_p_fut:.1f}€</h3></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="background-color:#28a745;padding:20px;border-radius:15px;text-align:center;color:white;"><h1>🚀 VERTA PIRKTI</h1><h3>Pikas: {max_p:.1f}€ | Galimas atšokimas: {min_p_fut:.1f}€</h3></div>', unsafe_allow_html=True)
     elif momentum < -0.3:
         st.markdown(f'<div style="background-color:#dc3545;padding:20px;border-radius:15px;text-align:center;color:white;"><h1>🪂 RIZIKA / PARDUOTI</h1></div>', unsafe_allow_html=True)
     else:
@@ -59,17 +59,6 @@ if kainos:
     ax.set_facecolor('#0a0a0a')
     ax_vol.set_facecolor('#0a0a0a')
     
-    # Istorinis judėjimas
-    ax.plot(laikai[-20:], kainos[-20:], color='#2962ff', linewidth=3, alpha=0.5)
-    # Banguojanti prognozė
-    ax.plot(l_fut, p_fut, color='#00ffcc', linewidth=5, alpha=0.9)
-    
-    # Istoriniai smaigaliai (Melsvi)
-    for i in range(len(kainos[-20:])-2):
-        idx = i + (len(kainos) - 20)
-        if (kainos[idx] > kainos[idx-1] and kainos[idx] > kainos[idx+1]):
-            ax.text(laikai[idx], kainos[idx]+0.5, f"{kainos[idx]:.1f}", color='#4c8bf5', fontsize=8, ha='center')
-
-    # --- DINAMINIAI INDIKATORIAI ---
-    if momentum > 0.15:
-        ax.
+    # Istorija (Mėlyna linija)
+    ax.plot(laikai[-25:], kainos[-25:], color='#2962ff', linewidth=3, alpha=0.6)
+    # Banguojanti neoninė prognozė
